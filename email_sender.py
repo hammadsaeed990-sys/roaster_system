@@ -1,11 +1,10 @@
 import os
 import smtplib
 from email.message import EmailMessage
-
+import ssl  # SSL context के लिए
 
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "").strip()
-SENDER_APP_PASSWORD = os.environ.get("SENDER_APP_PASSWORD", "").replace(" ", "").strip()
-
+SENDER_APP_PASSWORD = os.environ.get("SENDER_APP_PASSWORD", "").strip()
 
 def send_roster_email(
     employee_name,
@@ -22,6 +21,7 @@ def send_roster_email(
         print(f"Recipient: {employee_email}")
         print("==========================================")
 
+        # Validation
         if not SENDER_EMAIL:
             print("EMAIL ERROR: SENDER_EMAIL is missing.")
             return False
@@ -30,15 +30,21 @@ def send_roster_email(
             print("EMAIL ERROR: SENDER_APP_PASSWORD is missing.")
             return False
 
+        if not employee_email or not employee_email.strip():
+            print("EMAIL ERROR: Employee email is empty.")
+            return False
+
+        # Clean up variables
+        employee_email = employee_email.strip()
+        employee_name = employee_name.strip() or "Employee"
+
+        # Create message
         message = EmailMessage()
-
-        message["Subject"] = (
-            f"Your Work Roster - Week Starting {week_start}"
-        )
-
+        message["Subject"] = f"Your Work Roster - Week Starting {week_start}"
         message["From"] = SENDER_EMAIL
         message["To"] = employee_email
 
+        # Create email body
         body = f"""
 Hello {employee_name},
 
@@ -47,7 +53,7 @@ Your work roster has been uploaded successfully.
 Week Starting: {week_start}
 
 YOUR ROSTER
-
+-----------
 Monday:
 Shift: {shifts.get("monday", "OFF")}
 Location: {locations.get("monday", "")}
@@ -86,43 +92,58 @@ Task Force
 
         print("Connecting to Gmail SMTP...")
 
-        # Gmail SMTP SSL
-        with smtplib.SMTP_SSL(
-            "smtp.gmail.com",
-            465,
-            timeout=30
-        ) as server:
+        # Create SSL context
+        context = ssl.create_default_context()
 
-            print("Connected to Gmail SMTP.")
+        # Try both ports if one fails
+        smtp_ports = [465, 587]
+        
+        for port in smtp_ports:
+            try:
+                if port == 465:
+                    # SSL connection
+                    with smtplib.SMTP_SSL("smtp.gmail.com", port, context=context, timeout=30) as server:
+                        print(f"Connected to Gmail SMTP on port {port}")
+                        server.login(SENDER_EMAIL, SENDER_APP_PASSWORD)
+                        print("Gmail login successful.")
+                        server.send_message(message)
+                        print(f"EMAIL SENT SUCCESSFULLY TO: {employee_email}")
+                        print("==========================================")
+                        return True
+                else:
+                    # TLS connection
+                    with smtplib.SMTP("smtp.gmail.com", port, timeout=30) as server:
+                        server.starttls(context=context)
+                        print(f"Connected to Gmail SMTP on port {port}")
+                        server.login(SENDER_EMAIL, SENDER_APP_PASSWORD)
+                        print("Gmail login successful.")
+                        server.send_message(message)
+                        print(f"EMAIL SENT SUCCESSFULLY TO: {employee_email}")
+                        print("==========================================")
+                        return True
+                        
+            except Exception as e:
+                print(f"Port {port} failed: {str(e)}")
+                continue
 
-            server.login(
-                SENDER_EMAIL,
-                SENDER_APP_PASSWORD
-            )
-
-            print("Gmail login successful.")
-
-            server.send_message(message)
-
-            print(
-                f"EMAIL SENT SUCCESSFULLY TO: {employee_email}"
-            )
-
-        print("==========================================")
-        return True
+        print("All ports failed")
+        return False
 
     except smtplib.SMTPAuthenticationError as exc:
         print("==========================================")
         print("GMAIL AUTHENTICATION ERROR")
-        print(repr(exc))
-        print("Check Gmail App Password and SENDER_EMAIL.")
+        print("Error:", exc)
+        print("TIPS:")
+        print("1. Enable 2FA on Gmail")
+        print("2. Generate App Password")
+        print("3. Check SENDER_EMAIL is correct")
         print("==========================================")
         return False
 
     except smtplib.SMTPException as exc:
         print("==========================================")
         print("GMAIL SMTP ERROR")
-        print(repr(exc))
+        print("Error:", exc)
         print("==========================================")
         return False
 
@@ -131,5 +152,7 @@ Task Force
         print("EMAIL ERROR")
         print(f"Type: {type(exc).__name__}")
         print(f"Error: {exc!r}")
+        import traceback
+        traceback.print_exc()
         print("==========================================")
         return False
