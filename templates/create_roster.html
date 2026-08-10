@@ -4,117 +4,155 @@
 
 {% block content %}
 
-<form method="POST">
+<div class="container-fluid">
 
-    <!-- Employee + Week -->
-    <div class="row g-3 mb-4">
-
-        <div class="col-md-6">
-
-            <label class="form-label">
-                Employee
-            </label>
-
-            <select
-                class="form-select"
-                name="employee_id"
-                required
-            >
-
-                <option value="">
-                    Select employee
-                </option>
-
-                {% for e in employees %}
-
-                    <option value="{{ e.id }}">
-                        {{ e.name }} — {{ e.email }}
-                    </option>
-
-                {% endfor %}
-
-            </select>
-
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">Create Roster</h2>
+            <p class="text-muted mb-0">
+                Create or update an employee's weekly roster.
+            </p>
         </div>
 
-
-        <div class="col-md-6">
-
-            <label class="form-label">
-                Week starting (Monday)
-            </label>
-
-            <input
-                class="form-control"
-                type="date"
-                name="week_start"
-                required
-            >
-
-        </div>
-
+        <a
+            href="{{ url_for('rosters') }}"
+            class="btn btn-outline-secondary"
+        >
+            Back to Rosters
+        </a>
     </div>
 
 
-    <!-- Weekly Shifts + Locations -->
+    <!-- IMPORTANT: FORM START -->
+    <form
+        method="POST"
+        action="{{ url_for('create_roster') }}"
+    >
 
-    <div class="row g-3">
+        <!-- Employee + Week -->
+        <div class="row g-3 mb-4">
 
-        {% for day in days %}
-
-        <div class="col-md-6">
-
-            <div class="card p-3 h-100">
-
-                <h5 class="text-capitalize mb-3">
-                    {{ day }}
-                </h5>
-
-
-                <!-- Shift -->
+            <div class="col-md-6">
 
                 <label class="form-label">
-                    Shift
+                    Employee
                 </label>
 
-                <input
-                    class="form-control mb-3"
-                    name="{{ day }}"
-                    value="OFF"
-                    placeholder="08:00-16:00 or OFF"
+                <select
+                    class="form-select"
+                    name="employee_id"
+                    required
                 >
 
+                    <option value="">
+                        Select employee
+                    </option>
 
-                <!-- Location -->
+                    {% for e in employees %}
+
+                        <option value="{{ e.id }}">
+                            {{ e.name }} — {{ e.email }}
+                        </option>
+
+                    {% endfor %}
+
+                </select>
+
+            </div>
+
+
+            <div class="col-md-6">
 
                 <label class="form-label">
-                    Location
+                    Week starting (Monday)
                 </label>
 
                 <input
                     class="form-control"
-                    name="{{ day }}_location"
-                    placeholder="e.g. Dublin Office, Navan Site"
+                    type="date"
+                    name="week_start"
+                    required
                 >
 
             </div>
 
         </div>
 
-        {% endfor %}
 
-    </div>
+        <!-- Weekly Shifts + Locations -->
+
+        <div class="row g-3">
+
+            {% for day in days %}
+
+            <div class="col-md-6">
+
+                <div class="card p-3 h-100">
+
+                    <h5 class="text-capitalize mb-3">
+                        {{ day }}
+                    </h5>
 
 
-    <!-- Save -->
+                    <!-- Shift -->
 
-    <button
-        type="submit"
-        class="btn btn-dark mt-4"
-    >
-        Save Roster
-    </button>
+                    <label class="form-label">
+                        Shift
+                    </label>
 
-</form>
+                    <input
+                        class="form-control mb-3"
+                        name="{{ day }}"
+                        value="OFF"
+                        placeholder="08:00-16:00 or OFF"
+                    >
+
+
+                    <!-- Location -->
+
+                    <label class="form-label">
+                        Location
+                    </label>
+
+                    <input
+                        class="form-control"
+                        name="{{ day }}_location"
+                        placeholder="e.g. Dublin Office, Navan Site"
+                    >
+
+                </div>
+
+            </div>
+
+            {% endfor %}
+
+        </div>
+
+
+        <!-- Save -->
+
+        <div class="mt-4">
+
+            <button
+                type="submit"
+                class="btn btn-dark"
+            >
+                Save Roster
+            </button>
+
+            <a
+                href="{{ url_for('rosters') }}"
+                class="btn btn-outline-secondary ms-2"
+            >
+                Cancel
+            </a>
+
+        </div>
+
+    </form>
+    <!-- IMPORTANT: FORM END -->
+
+</div>
 
 {% endblock %}
+
