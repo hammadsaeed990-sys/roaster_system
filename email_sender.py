@@ -1,20 +1,11 @@
+import os
 import smtplib
 from email.message import EmailMessage
 
 
-# ============================================================
-# GMAIL SETTINGS
-# ============================================================
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "").strip()
+SENDER_APP_PASSWORD = os.environ.get("SENDER_APP_PASSWORD", "").replace(" ", "").strip()
 
-SENDER_EMAIL = "hammadsaeed990@gmail.com"
-
-# Apna existing Gmail App Password yahan rakho
-SENDER_APP_PASSWORD = "glgs cjrp uxwi glhp"
-
-
-# ============================================================
-# SEND ROSTER EMAIL
-# ============================================================
 
 def send_roster_email(
     employee_name,
@@ -23,8 +14,21 @@ def send_roster_email(
     shifts,
     locations
 ):
-
     try:
+        print("==========================================")
+        print("EMAIL FUNCTION STARTED")
+        print(f"Sender configured: {bool(SENDER_EMAIL)}")
+        print(f"Password configured: {bool(SENDER_APP_PASSWORD)}")
+        print(f"Recipient: {employee_email}")
+        print("==========================================")
+
+        if not SENDER_EMAIL:
+            print("EMAIL ERROR: SENDER_EMAIL is missing.")
+            return False
+
+        if not SENDER_APP_PASSWORD:
+            print("EMAIL ERROR: SENDER_APP_PASSWORD is missing.")
+            return False
 
         message = EmailMessage()
 
@@ -35,11 +39,6 @@ def send_roster_email(
         message["From"] = SENDER_EMAIL
         message["To"] = employee_email
 
-
-        # ====================================================
-        # EMAIL BODY
-        # ====================================================
-
         body = f"""
 Hello {employee_name},
 
@@ -48,36 +47,34 @@ Your work roster has been uploaded successfully.
 Week Starting: {week_start}
 
 YOUR ROSTER
-==================================================
 
 Monday:
-Shift: {shifts["monday"]}
-Location: {locations["monday"]}
+Shift: {shifts.get("monday", "OFF")}
+Location: {locations.get("monday", "")}
 
 Tuesday:
-Shift: {shifts["tuesday"]}
-Location: {locations["tuesday"]}
+Shift: {shifts.get("tuesday", "OFF")}
+Location: {locations.get("tuesday", "")}
 
 Wednesday:
-Shift: {shifts["wednesday"]}
-Location: {locations["wednesday"]}
+Shift: {shifts.get("wednesday", "OFF")}
+Location: {locations.get("wednesday", "")}
 
 Thursday:
-Shift: {shifts["thursday"]}
-Location: {locations["thursday"]}
+Shift: {shifts.get("thursday", "OFF")}
+Location: {locations.get("thursday", "")}
 
 Friday:
-Shift: {shifts["friday"]}
-Location: {locations["friday"]}
+Shift: {shifts.get("friday", "OFF")}
+Location: {locations.get("friday", "")}
 
 Saturday:
-Shift: {shifts["saturday"]}
-Location: {locations["saturday"]}
+Shift: {shifts.get("saturday", "OFF")}
+Location: {locations.get("saturday", "")}
 
 Sunday:
-Shift: {shifts["sunday"]}
-Location: {locations["sunday"]}
-
+Shift: {shifts.get("sunday", "OFF")}
+Location: {locations.get("sunday", "")}
 
 Please check your roster carefully.
 
@@ -87,39 +84,52 @@ Task Force
 
         message.set_content(body)
 
+        print("Connecting to Gmail SMTP...")
 
-        # ====================================================
-        # SEND EMAIL
-        # ====================================================
-
-        print(f"Sending email to {employee_email}...")
-
-        with smtplib.SMTP(
+        # Gmail SMTP SSL
+        with smtplib.SMTP_SSL(
             "smtp.gmail.com",
-            587
+            465,
+            timeout=30
         ) as server:
 
-            server.starttls()
+            print("Connected to Gmail SMTP.")
 
             server.login(
                 SENDER_EMAIL,
                 SENDER_APP_PASSWORD
             )
 
+            print("Gmail login successful.")
+
             server.send_message(message)
 
+            print(
+                f"EMAIL SENT SUCCESSFULLY TO: {employee_email}"
+            )
 
-        print(
-            f"Email sent successfully to {employee_email}"
-        )
-
+        print("==========================================")
         return True
 
+    except smtplib.SMTPAuthenticationError as exc:
+        print("==========================================")
+        print("GMAIL AUTHENTICATION ERROR")
+        print(repr(exc))
+        print("Check Gmail App Password and SENDER_EMAIL.")
+        print("==========================================")
+        return False
+
+    except smtplib.SMTPException as exc:
+        print("==========================================")
+        print("GMAIL SMTP ERROR")
+        print(repr(exc))
+        print("==========================================")
+        return False
 
     except Exception as exc:
-
-        print(
-            f"Email failed for {employee_email}: {exc}"
-        )
-
+        print("==========================================")
+        print("EMAIL ERROR")
+        print(f"Type: {type(exc).__name__}")
+        print(f"Error: {exc!r}")
+        print("==========================================")
         return False
