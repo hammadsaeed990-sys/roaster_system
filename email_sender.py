@@ -1,7 +1,20 @@
-import os
 import smtplib
 from email.message import EmailMessage
 
+
+# ============================================================
+# GMAIL SETTINGS
+# ============================================================
+
+SENDER_EMAIL = "hammadsaeed990@gmail.com"
+
+# Apna existing Gmail App Password yahan rakho
+SENDER_APP_PASSWORD = "glgs cjrp uxwi glhp"
+
+
+# ============================================================
+# SEND ROSTER EMAIL
+# ============================================================
 
 def send_roster_email(
     employee_name,
@@ -10,23 +23,8 @@ def send_roster_email(
     shifts,
     locations
 ):
+
     try:
-        print("========== EMAIL FUNCTION STARTED ==========")
-        print(f"TO: {employee_email}")
-
-        sender_email = os.environ.get("SENDER_EMAIL")
-        app_password = os.environ.get("SENDER_APP_PASSWORD")
-
-        print(f"SENDER_EMAIL EXISTS: {bool(sender_email)}")
-        print(f"APP PASSWORD EXISTS: {bool(app_password)}")
-
-        if not sender_email:
-            print("ERROR: SENDER_EMAIL missing")
-            return False
-
-        if not app_password:
-            print("ERROR: SENDER_APP_PASSWORD missing")
-            return False
 
         message = EmailMessage()
 
@@ -34,8 +32,13 @@ def send_roster_email(
             f"Your Work Roster - Week Starting {week_start}"
         )
 
-        message["From"] = sender_email
+        message["From"] = SENDER_EMAIL
         message["To"] = employee_email
+
+
+        # ====================================================
+        # EMAIL BODY
+        # ====================================================
 
         body = f"""
 Hello {employee_name},
@@ -45,34 +48,36 @@ Your work roster has been uploaded successfully.
 Week Starting: {week_start}
 
 YOUR ROSTER
+==================================================
 
 Monday:
-Shift: {shifts.get("monday", "OFF")}
-Location: {locations.get("monday", "")}
+Shift: {shifts["monday"]}
+Location: {locations["monday"]}
 
 Tuesday:
-Shift: {shifts.get("tuesday", "OFF")}
-Location: {locations.get("tuesday", "")}
+Shift: {shifts["tuesday"]}
+Location: {locations["tuesday"]}
 
 Wednesday:
-Shift: {shifts.get("wednesday", "OFF")}
-Location: {locations.get("wednesday", "")}
+Shift: {shifts["wednesday"]}
+Location: {locations["wednesday"]}
 
 Thursday:
-Shift: {shifts.get("thursday", "OFF")}
-Location: {locations.get("thursday", "")}
+Shift: {shifts["thursday"]}
+Location: {locations["thursday"]}
 
 Friday:
-Shift: {shifts.get("friday", "OFF")}
-Location: {locations.get("friday", "")}
+Shift: {shifts["friday"]}
+Location: {locations["friday"]}
 
 Saturday:
-Shift: {shifts.get("saturday", "OFF")}
-Location: {locations.get("saturday", "")}
+Shift: {shifts["saturday"]}
+Location: {locations["saturday"]}
 
 Sunday:
-Shift: {shifts.get("sunday", "OFF")}
-Location: {locations.get("sunday", "")}
+Shift: {shifts["sunday"]}
+Location: {locations["sunday"]}
+
 
 Please check your roster carefully.
 
@@ -82,42 +87,39 @@ Task Force
 
         message.set_content(body)
 
-        print("CONNECTING TO GMAIL...")
+
+        # ====================================================
+        # SEND EMAIL
+        # ====================================================
+
+        print(f"Sending email to {employee_email}...")
 
         with smtplib.SMTP(
             "smtp.gmail.com",
-            587,
-            timeout=20
+            587
         ) as server:
-
-            server.ehlo()
-
-            print("STARTING TLS...")
 
             server.starttls()
 
-            server.ehlo()
-
-            print("LOGGING INTO GMAIL...")
-
             server.login(
-                sender_email,
-                app_password
+                SENDER_EMAIL,
+                SENDER_APP_PASSWORD
             )
-
-            print("GMAIL LOGIN SUCCESSFUL")
 
             server.send_message(message)
 
-            print("EMAIL SENT SUCCESSFULLY")
+
+        print(
+            f"Email sent successfully to {employee_email}"
+        )
 
         return True
 
+
     except Exception as exc:
 
-        print("========== EMAIL ERROR ==========")
-        print(f"ERROR TYPE: {type(exc).__name__}")
-        print(f"ERROR: {exc}")
-        print("=================================")
+        print(
+            f"Email failed for {employee_email}: {exc}"
+        )
 
         return False
