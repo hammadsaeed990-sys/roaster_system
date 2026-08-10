@@ -14,6 +14,8 @@ def send_roster_email(
     shifts,
     locations
 ):
+    print("========== EMAIL FUNCTION STARTED ==========")
+    print(f"EMAIL TO: {employee_email}")
 
     try:
 
