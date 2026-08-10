@@ -1,11 +1,20 @@
-import os
 import smtplib
 from email.message import EmailMessage
 
 
-SENDER_EMAIL = os.environ.get("hammadsaeed990@gmail.com")
-SENDER_APP_PASSWORD = os.environ.get("glgs cjrp uxwi glhp")
+# ============================================================
+# GMAIL SETTINGS
+# ============================================================
 
+SENDER_EMAIL = "hammadsaeed990@gmail.com"
+
+# Apna existing Gmail App Password yahan rakho
+SENDER_APP_PASSWORD = "glgs cjrp uxwi glhp"
+
+
+# ============================================================
+# SEND ROSTER EMAIL
+# ============================================================
 
 def send_roster_email(
     employee_name,
@@ -17,14 +26,6 @@ def send_roster_email(
 
     try:
 
-        if not SENDER_EMAIL:
-            print("ERROR: SENDER_EMAIL is not configured.")
-            return False
-
-        if not SENDER_APP_PASSWORD:
-            print("ERROR: SENDER_APP_PASSWORD is not configured.")
-            return False
-
         message = EmailMessage()
 
         message["Subject"] = (
@@ -34,6 +35,11 @@ def send_roster_email(
         message["From"] = SENDER_EMAIL
         message["To"] = employee_email
 
+
+        # ====================================================
+        # EMAIL BODY
+        # ====================================================
+
         body = f"""
 Hello {employee_name},
 
@@ -42,35 +48,36 @@ Your work roster has been uploaded successfully.
 Week Starting: {week_start}
 
 YOUR ROSTER
-===========
+==================================================
 
 Monday:
-Shift: {shifts.get("monday", "OFF")}
-Location: {locations.get("monday", "")}
+Shift: {shifts["monday"]}
+Location: {locations["monday"]}
 
 Tuesday:
-Shift: {shifts.get("tuesday", "OFF")}
-Location: {locations.get("tuesday", "")}
+Shift: {shifts["tuesday"]}
+Location: {locations["tuesday"]}
 
 Wednesday:
-Shift: {shifts.get("wednesday", "OFF")}
-Location: {locations.get("wednesday", "")}
+Shift: {shifts["wednesday"]}
+Location: {locations["wednesday"]}
 
 Thursday:
-Shift: {shifts.get("thursday", "OFF")}
-Location: {locations.get("thursday", "")}
+Shift: {shifts["thursday"]}
+Location: {locations["thursday"]}
 
 Friday:
-Shift: {shifts.get("friday", "OFF")}
-Location: {locations.get("friday", "")}
+Shift: {shifts["friday"]}
+Location: {locations["friday"]}
 
 Saturday:
-Shift: {shifts.get("saturday", "OFF")}
-Location: {locations.get("saturday", "")}
+Shift: {shifts["saturday"]}
+Location: {locations["saturday"]}
 
 Sunday:
-Shift: {shifts.get("sunday", "OFF")}
-Location: {locations.get("sunday", "")}
+Shift: {shifts["sunday"]}
+Location: {locations["sunday"]}
+
 
 Please check your roster carefully.
 
@@ -80,18 +87,19 @@ Task Force
 
         message.set_content(body)
 
-        print(f"Connecting to Gmail SMTP...")
+
+        # ====================================================
+        # SEND EMAIL
+        # ====================================================
+
         print(f"Sending email to {employee_email}...")
 
         with smtplib.SMTP(
             "smtp.gmail.com",
-            587,
-            timeout=20
+            587
         ) as server:
 
-            server.ehlo()
             server.starttls()
-            server.ehlo()
 
             server.login(
                 SENDER_EMAIL,
@@ -100,17 +108,18 @@ Task Force
 
             server.send_message(message)
 
+
         print(
             f"Email sent successfully to {employee_email}"
         )
 
         return True
 
+
     except Exception as exc:
 
         print(
-            f"EMAIL ERROR for {employee_email}: "
-            f"{type(exc).__name__}: {exc}"
+            f"Email failed for {employee_email}: {exc}"
         )
 
         return False
