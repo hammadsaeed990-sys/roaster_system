@@ -1,0 +1,529 @@
+{% extends "base.html" %}
+
+{% block title %}Employee History{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid py-4">
+
+
+<!-- BACK BUTTON -->
+<div class="mb-4">
+    <a class="btn btn-outline-dark"
+       href="{{ url_for('dashboard') }}">
+        ← Back to Dashboard
+    </a>
+</div>
+
+
+<!-- SEARCH -->
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+
+        <h4 class="mb-3">
+            Employee History
+        </h4>
+
+        <form method="get"
+              action="{{ url_for('employee_history') }}"
+              class="row g-3">
+
+            <div class="col-md-9">
+
+                <label class="form-label fw-semibold">
+                    Search Employee
+                </label>
+
+                <input
+                    type="text"
+                    name="search"
+                    class="form-control"
+                    value="{{ search }}"
+                    placeholder="Enter employee name or email"
+                >
+
+            </div>
+
+            <div class="col-md-3 d-flex align-items-end">
+
+                <button type="submit"
+                        class="btn btn-dark w-100">
+                    Search
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+</div>
+
+
+<!-- SEARCH RESULTS -->
+{% if search %}
+
+    <div class="card shadow-sm mb-4">
+
+        <div class="card-body">
+
+            <h5 class="mb-3">
+                Search Results
+            </h5>
+
+            {% if employees %}
+
+                <div class="list-group">
+
+                    {% for employee in employees %}
+
+                        <a
+                            href="{{ url_for(
+                                'employee_history',
+                                search=search,
+                                employee_id=employee.id
+                            ) }}"
+                            class="list-group-item list-group-item-action"
+                        >
+
+                            <div class="d-flex justify-content-between align-items-center">
+
+                                <div>
+
+                                    <strong>
+                                        {{ employee.name }}
+                                    </strong>
+
+                                    <br>
+
+                                    <small class="text-muted">
+                                        {{ employee.email }}
+                                    </small>
+
+                                </div>
+
+                                <span class="badge
+                                    {% if employee.active %}
+                                        bg-success
+                                    {% else %}
+                                        bg-secondary
+                                    {% endif %}
+                                ">
+
+                                    {% if employee.active %}
+                                        Active
+                                    {% else %}
+                                        Inactive
+                                    {% endif %}
+
+                                </span>
+
+                            </div>
+
+                        </a>
+
+                    {% endfor %}
+
+                </div>
+
+            {% else %}
+
+                <div class="alert alert-warning mb-0">
+                    No employee found.
+                </div>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+{% endif %}
+
+
+<!-- SELECTED EMPLOYEE -->
+{% if selected_employee %}
+
+    <!-- EMPLOYEE HEADER -->
+    <div class="card shadow-sm mb-4">
+
+        <div class="card-body">
+
+            <div class="d-flex justify-content-between align-items-center">
+
+                <div>
+
+                    <h3 class="mb-1">
+                        {{ selected_employee.name }}
+                    </h3>
+
+                    <p class="text-muted mb-0">
+                        {{ selected_employee.email }}
+                    </p>
+
+                </div>
+
+                <div>
+
+                    {% if selected_employee.active %}
+
+                        <span class="badge bg-success fs-6">
+                            Active
+                        </span>
+
+                    {% else %}
+
+                        <span class="badge bg-secondary fs-6">
+                            Inactive
+                        </span>
+
+                    {% endif %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- SUMMARY -->
+    <div class="row g-3 mb-4">
+
+        <!-- TOTAL WEEKS -->
+        <div class="col-md-3">
+
+            <div class="card shadow-sm h-100">
+
+                <div class="card-body">
+
+                    <small class="text-muted">
+                        Total Roster Weeks
+                    </small>
+
+                    <h2 class="mb-0 mt-2">
+                        {{ total_weeks }}
+                    </h2>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- WORKED SHIFTS -->
+        <div class="col-md-3">
+
+            <div class="card shadow-sm h-100">
+
+                <div class="card-body">
+
+                    <small class="text-muted">
+                        Total Worked Shifts
+                    </small>
+
+                    <h2 class="mb-0 mt-2">
+                        {{ total_worked_shifts }}
+                    </h2>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- OFF DAYS -->
+        <div class="col-md-3">
+
+            <div class="card shadow-sm h-100">
+
+                <div class="card-body">
+
+                    <small class="text-muted">
+                        Total Off Days
+                    </small>
+
+                    <h2 class="mb-0 mt-2">
+                        {{ total_off_days }}
+                    </h2>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- TOTAL HOURS -->
+        <div class="col-md-3">
+
+            <div class="card shadow-sm h-100">
+
+                <div class="card-body">
+
+                    <small class="text-muted">
+                        Total Hours
+                    </small>
+
+                    <h2 class="mb-0 mt-2">
+
+                        {{ "%.2f"|format(total_hours|float) }}
+
+                        <small class="fs-6">
+                            hrs
+                        </small>
+
+                    </h2>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- COMPLETE HISTORY -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+
+        <h4 class="mb-0">
+            Complete Roster History
+        </h4>
+
+    </div>
+
+
+    {% if history %}
+
+        {% for roster in history %}
+
+            <!-- WEEK CARD -->
+            <div class="card shadow-sm mb-4">
+
+                <!-- WEEK HEADER -->
+                <div class="card-header bg-dark text-white">
+
+                    <div class="row align-items-center">
+
+                        <div class="col-md-6">
+
+                            <h5 class="mb-1">
+
+                                Week Starting:
+                                {{ roster.week_start }}
+
+                            </h5>
+
+                            <small>
+
+                                Employee:
+                                {{ selected_employee.name }}
+
+                            </small>
+
+                        </div>
+
+
+                        <div class="col-md-6 text-md-end mt-3 mt-md-0">
+
+                            <span class="badge bg-light text-dark me-2">
+
+                                Roster #{{ roster.id }}
+
+                            </span>
+
+                            <span class="badge bg-success fs-6">
+
+                                Weekly Hours:
+                                {{ "%.2f"|format(calculate_weekly_hours(roster)|float) }}
+                                hrs
+
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- SCHEDULE TABLE -->
+                <div class="card-body p-0">
+
+                    <div class="table-responsive">
+
+                        <table class="table table-bordered table-hover align-middle mb-0">
+
+                            <thead class="table-light">
+
+                                <tr>
+
+                                    <th style="width: 15%;">
+                                        Day
+                                    </th>
+
+                                    <th style="width: 25%;">
+                                        Shift
+                                    </th>
+
+                                    <th style="width: 40%;">
+                                        Location
+                                    </th>
+
+                                    <th style="width: 20%;">
+                                        Hours
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+
+                            <tbody>
+
+                                {% for day in days %}
+
+                                    {% set shift = roster|attr(day) %}
+
+                                    {% set location = roster|attr(day ~ "_location") %}
+
+
+                                    <tr>
+
+                                        <!-- DAY -->
+                                        <td>
+
+                                            <strong class="text-capitalize">
+                                                {{ day }}
+                                            </strong>
+
+                                        </td>
+
+
+                                        <!-- SHIFT -->
+                                        <td>
+
+                                            {% if shift and shift|upper != "OFF" %}
+
+                                                <span class="badge bg-primary">
+
+                                                    {{ shift }}
+
+                                                </span>
+
+                                            {% else %}
+
+                                                <span class="badge bg-secondary">
+
+                                                    OFF
+
+                                                </span>
+
+                                            {% endif %}
+
+                                        </td>
+
+
+                                        <!-- LOCATION -->
+                                        <td>
+
+                                            {% if location %}
+
+                                                {{ location }}
+
+                                            {% else %}
+
+                                                <span class="text-muted">
+                                                    -
+                                                </span>
+
+                                            {% endif %}
+
+                                        </td>
+
+
+                                        <!-- HOURS -->
+                                        <td>
+
+                                            {% if shift and shift|upper != "OFF" %}
+
+                                                <strong>
+
+                                                    {{ "%.2f"|format(
+                                                        calculate_shift_hours(shift)|float
+                                                    ) }}
+
+                                                    hrs
+
+                                                </strong>
+
+                                            {% else %}
+
+                                                <span class="text-muted">
+                                                    0 hrs
+                                                </span>
+
+                                            {% endif %}
+
+                                        </td>
+
+                                    </tr>
+
+                                {% endfor %}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
+
+
+                <!-- WEEK TOTAL -->
+                <div class="card-footer">
+
+                    <div class="d-flex justify-content-between align-items-center">
+
+                        <strong>
+                            Total Hours This Week
+                        </strong>
+
+                        <strong class="fs-5 text-success">
+
+                            {{ "%.2f"|format(
+                                calculate_weekly_hours(roster)|float
+                            ) }}
+
+                            hours
+
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        {% endfor %}
+
+
+    {% else %}
+
+        <div class="alert alert-info">
+
+            No roster history found for this employee.
+
+        </div>
+
+    {% endif %}
+
+{% endif %}
+
+
+</div>
+
+{% endblock %}

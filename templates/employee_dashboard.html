@@ -1,0 +1,3 @@
+{% extends "base.html" %}{% block title %}My Roster{% endblock %}
+{% block content %}<h1>Welcome, {{ employee.name }}</h1><p class="text-muted">Your weekly rosters.</p>
+<div class="row g-3">{% for r in rosters %}<div class="col-md-6"><div class="card p-4"><h4>Week starting {{ r.week_start }}</h4><a class="btn btn-dark" href="{{ url_for('view_roster',roster_id=r.id) }}">View Roster</a></div></div>{% else %}<div class="col-12"><div class="card p-4">No roster has been assigned yet.</div></div>{% endfor %}</div>{% endblock %}

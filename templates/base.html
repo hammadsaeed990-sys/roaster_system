@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+
+    <meta charset="utf-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
+    <title>
+        {% block title %}Roster Manager{% endblock %}
+    </title>
+
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+    <style>
+
+        body {
+            background: #f5f7fb;
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+        }
+
+        .card {
+            border: 0;
+            box-shadow: 0 4px 18px rgba(0, 0, 0, .06);
+        }
+
+        .shift {
+            min-height: 90px;
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+    <!-- NAVBAR -->
+
+    <nav class="navbar navbar-dark bg-dark mb-4">
+
+        <div class="container">
+
+            <a
+                class="navbar-brand"
+                href="{{ url_for('dashboard') }}"
+            >
+                Roster Manager
+            </a>
+
+
+            {% if session.get('user_id') %}
+
+            <div class="d-flex align-items-center gap-3 text-white">
+
+                <span>
+                    {{ session.get('name') }}
+                </span>
+
+                <a
+                    class="btn btn-outline-light btn-sm"
+                    href="{{ url_for('logout') }}"
+                >
+                    Logout
+                </a>
+
+            </div>
+
+            {% endif %}
+
+        </div>
+
+    </nav>
+
+
+    <!-- MAIN CONTENT -->
+
+    <div class="container pb-5">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+
+            {% for category, message in messages %}
+
+                <div class="alert alert-{{ category }}">
+                    {{ message }}
+                </div>
+
+            {% endfor %}
+
+        {% endwith %}
+
+
+        {% block content %}
+
+        {% endblock %}
+
+    </div>
+
+
+</body>
+
+</html>
