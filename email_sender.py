@@ -1,17 +1,10 @@
+import os
 import smtplib
 from email.message import EmailMessage
-import os
 
 
-SENDER_EMAIL = os.environ.get(
-    "hammadsaeed990@gmail.com",
-    ""
-)
-
-SENDER_APP_PASSWORD = os.environ.get(
-    "glgs cjrp uxwi glhp",
-    ""
-)
+SENDER_EMAIL = os.environ.get("hammadsaeed990@gmail.com")
+SENDER_APP_PASSWORD = os.environ.get("glgs cjrp uxwi glhp")
 
 
 def send_roster_email(
@@ -24,8 +17,12 @@ def send_roster_email(
 
     try:
 
-        if not SENDER_EMAIL or not SENDER_APP_PASSWORD:
-            print("Email credentials are not configured.")
+        if not SENDER_EMAIL:
+            print("ERROR: SENDER_EMAIL is not configured.")
+            return False
+
+        if not SENDER_APP_PASSWORD:
+            print("ERROR: SENDER_APP_PASSWORD is not configured.")
             return False
 
         message = EmailMessage()
@@ -45,6 +42,7 @@ Your work roster has been uploaded successfully.
 Week Starting: {week_start}
 
 YOUR ROSTER
+===========
 
 Monday:
 Shift: {shifts.get("monday", "OFF")}
@@ -82,15 +80,18 @@ Task Force
 
         message.set_content(body)
 
+        print(f"Connecting to Gmail SMTP...")
         print(f"Sending email to {employee_email}...")
 
         with smtplib.SMTP(
             "smtp.gmail.com",
             587,
-            timeout=30
+            timeout=20
         ) as server:
 
+            server.ehlo()
             server.starttls()
+            server.ehlo()
 
             server.login(
                 SENDER_EMAIL,
@@ -108,7 +109,8 @@ Task Force
     except Exception as exc:
 
         print(
-            f"Email failed for {employee_email}: {repr(exc)}"
+            f"EMAIL ERROR for {employee_email}: "
+            f"{type(exc).__name__}: {exc}"
         )
 
         return False
