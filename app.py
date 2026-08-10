@@ -100,16 +100,15 @@ DAYS = [
 # ============================================================
 
 try:
-
     from email_sender import send_roster_email
-
+    print("EMAIL SENDER IMPORTED SUCCESSFULLY")
 except Exception as exc:
-
-    print(
-        f"Email sender could not be loaded: {exc}"
-    )
+    print("EMAIL SENDER IMPORT FAILED")
+    print(f"ERROR TYPE: {type(exc).__name__}")
+    print(f"ERROR DETAILS: {exc}")
 
     def send_roster_email(**kwargs):
+        print("FALLBACK EMAIL FUNCTION USED")
         return False
 
 
