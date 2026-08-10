@@ -23,18 +23,6 @@ import io
 import re
 import os
 
-# ============================================================
-# EMAIL SENDER
-# ============================================================
-
-try:
-    from email_sender import send_roster_email
-except Exception as exc:
-    print(f"Email sender could not be loaded: {exc}")
-
-    def send_roster_email(**kwargs):
-        return False
-
 
 # ============================================================
 # APPLICATION
@@ -47,11 +35,16 @@ app.config["SECRET_KEY"] = os.environ.get(
     "change-this-secret-key"
 )
 
-# ------------------------------------------------------------
-# DATABASE
-# ------------------------------------------------------------
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+# ============================================================
+# DATABASE CONFIGURATION
+# ============================================================
+
+BASE_DIR = os.path.abspath(
+    os.path.dirname(__file__)
+)
 
 INSTANCE_DIR = os.path.join(
     BASE_DIR,
@@ -74,7 +67,7 @@ DATABASE_URL = os.environ.get(
 
 if DATABASE_URL:
 
-    # Render/PostgreSQL compatibility
+    # Render / PostgreSQL compatibility
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace(
             "postgres://",
@@ -82,7 +75,13 @@ if DATABASE_URL:
             1
         )
 
-    app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
+    if DATABASE_URL.startswith("postgresql://"):
+        # psycopg2 is normally used by SQLAlchemy if installed.
+        # Keep the URL as provided.
+        app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
+
+    else:
+        app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 
 else:
 
@@ -90,7 +89,6 @@ else:
         "sqlite:///" + DATABASE_PATH
     )
 
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
@@ -108,6 +106,24 @@ DAYS = [
     "saturday",
     "sunday"
 ]
+
+
+# ============================================================
+# EMAIL SENDER
+# ============================================================
+
+try:
+
+    from email_sender import send_roster_email
+
+except Exception as exc:
+
+    print(
+        f"Email sender could not be loaded: {exc}"
+    )
+
+    def send_roster_email(**kwargs):
+        return False
 
 
 # ============================================================
@@ -260,6 +276,7 @@ def normalize_week_start(value):
     value = (value or "").strip()
 
     if not value:
+
         raise ValueError(
             "Week starting date is required."
         )
@@ -316,6 +333,14 @@ def calculate_shift_hours(shift):
     end_hour = int(match.group(3))
     end_minute = int(match.group(4))
 
+    if (
+        start_hour > 23
+        or end_hour > 23
+        or start_minute > 59
+        or end_minute > 59
+    ):
+        return 0
+
     start_minutes = (
         start_hour * 60
         + start_minute
@@ -367,16 +392,15 @@ def calculate_weekly_hours(roster):
 
 def migrate_database():
 
+    """
+    Safely adds missing location columns.
+
+    Works with SQLite and PostgreSQL.
+    """
+
     try:
 
-        inspector_result = db.session.execute(
-            db.text("PRAGMA table_info(roster)")
-        )
-
-        existing_columns = {
-            row[1]
-            for row in inspector_result
-        }
+        engine_name = db.engine.name
 
         required_columns = {
             "monday_location": "VARCHAR(200)",
@@ -388,27 +412,83 @@ def migrate_database():
             "sunday_location": "VARCHAR(200)"
         }
 
-        for column, column_type in required_columns.items():
+        # ----------------------------------------------------
+        # SQLITE
+        # ----------------------------------------------------
 
-            if column not in existing_columns:
+        if engine_name == "sqlite":
+
+            result = db.session.execute(
+                db.text(
+                    "PRAGMA table_info(roster)"
+                )
+            )
+
+            existing_columns = {
+                row[1]
+                for row in result
+            }
+
+            for column, column_type in required_columns.items():
+
+                if column not in existing_columns:
+
+                    db.session.execute(
+                        db.text(
+                            f'ALTER TABLE roster '
+                            f'ADD COLUMN "{column}" '
+                            f'{column_type} DEFAULT ""'
+                        )
+                    )
+
+            db.session.commit()
+
+            print(
+                "SQLite database migration completed."
+            )
+
+            return
+
+        # ----------------------------------------------------
+        # POSTGRESQL
+        # ----------------------------------------------------
+
+        if engine_name == "postgresql":
+
+            for column, column_type in required_columns.items():
 
                 db.session.execute(
                     db.text(
                         f'ALTER TABLE roster '
-                        f'ADD COLUMN "{column}" '
-                        f'{column_type} DEFAULT ""'
+                        f'ADD COLUMN IF NOT EXISTS '
+                        f'"{column}" '
+                        f'{column_type} DEFAULT \'\''
                     )
                 )
 
-        db.session.commit()
+            db.session.commit()
+
+            print(
+                "PostgreSQL database migration completed."
+            )
+
+            return
+
+        print(
+            f"No migration required for database: {engine_name}"
+        )
 
     except Exception as exc:
 
+        db.session.rollback()
+
         print(
-            f"Database migration error: {exc}"
+            "DATABASE MIGRATION ERROR:"
         )
 
-        db.session.rollback()
+        print(
+            repr(exc)
+        )
 
 
 # ============================================================
@@ -421,7 +501,9 @@ def clean_roster_dates():
 
         rosters = (
             Roster.query
-            .order_by(Roster.id.asc())
+            .order_by(
+                Roster.id.asc()
+            )
             .all()
         )
 
@@ -477,15 +559,16 @@ def clean_roster_dates():
                 seen[key] = roster
 
         if changed:
+
             db.session.commit()
 
     except Exception as exc:
 
+        db.session.rollback()
+
         print(
             f"Roster cleanup error: {exc}"
         )
-
-        db.session.rollback()
 
 
 # ============================================================
@@ -541,8 +624,10 @@ def inject_globals():
 
     return {
         "days": DAYS,
-        "calculate_shift_hours": calculate_shift_hours,
-        "calculate_weekly_hours": calculate_weekly_hours
+        "calculate_shift_hours":
+            calculate_shift_hours,
+        "calculate_weekly_hours":
+            calculate_weekly_hours
     }
 
 
@@ -575,6 +660,10 @@ def seed_admin():
             db.session.add(admin)
 
             db.session.commit()
+
+            print(
+                "Default admin created."
+            )
 
     except Exception as exc:
 
@@ -625,10 +714,27 @@ def login():
             ""
         )
 
-        user = User.query.filter_by(
-            email=email,
-            active=True
-        ).first()
+        try:
+
+            user = User.query.filter_by(
+                email=email,
+                active=True
+            ).first()
+
+        except Exception as exc:
+
+            print(
+                f"Login database error: {exc}"
+            )
+
+            flash(
+                "Database error. Please try again.",
+                "danger"
+            )
+
+            return render_template(
+                "login.html"
+            )
 
         if user and check_password_hash(
             user.password_hash,
@@ -819,6 +925,7 @@ def add_employee():
         )
 
         db.session.add(user)
+
         db.session.commit()
 
         flash(
@@ -831,7 +938,7 @@ def add_employee():
         db.session.rollback()
 
         print(
-            f"Add employee error: {exc}"
+            f"Add employee error: {repr(exc)}"
         )
 
         flash(
@@ -887,7 +994,7 @@ def deactivate_employee(user_id):
         db.session.rollback()
 
         print(
-            f"Deactivate employee error: {exc}"
+            f"Deactivate employee error: {repr(exc)}"
         )
 
         flash(
@@ -943,7 +1050,7 @@ def activate_employee(user_id):
         db.session.rollback()
 
         print(
-            f"Activate employee error: {exc}"
+            f"Activate employee error: {repr(exc)}"
         )
 
         flash(
@@ -986,6 +1093,7 @@ def delete_employee(user_id):
     try:
 
         db.session.delete(user)
+
         db.session.commit()
 
         flash(
@@ -998,7 +1106,7 @@ def delete_employee(user_id):
         db.session.rollback()
 
         print(
-            f"Delete employee error: {exc}"
+            f"Delete employee error: {repr(exc)}"
         )
 
         flash(
@@ -1096,11 +1204,9 @@ def employee_history():
 
             for roster in history:
 
-                weekly_hours = calculate_weekly_hours(
+                total_hours += calculate_weekly_hours(
                     roster
                 )
-
-                total_hours += weekly_hours
 
                 for day in DAYS:
 
@@ -1133,7 +1239,10 @@ def employee_history():
         total_worked_shifts=total_worked_shifts,
         total_off_days=total_off_days,
         total_days_recorded=total_days_recorded,
-        total_hours=round(total_hours, 2),
+        total_hours=round(
+            total_hours,
+            2
+        ),
         first_week=first_week,
         last_week=last_week
     )
@@ -1172,243 +1281,343 @@ def rosters():
 @admin_required
 def create_roster():
 
-    employees = (
-        User.query
-        .filter(
-            User.role == "employee",
-            User.active.is_(True)
+    try:
+
+        employees = (
+            User.query
+            .filter(
+                User.role == "employee",
+                User.active.is_(True)
+            )
+            .order_by(
+                User.name.asc()
+            )
+            .all()
         )
-        .order_by(
-            User.name.asc()
+
+    except Exception as exc:
+
+        print(
+            f"Employee loading error: {repr(exc)}"
         )
-        .all()
+
+        flash(
+            "Could not load employees.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("dashboard")
+        )
+
+    # ========================================================
+    # GET
+    # ========================================================
+
+    if request.method == "GET":
+
+        return render_template(
+            "create_roster.html",
+            employees=employees
+        )
+
+    # ========================================================
+    # POST
+    # ========================================================
+
+    print(
+        "=========================================="
     )
 
-    if request.method == "POST":
+    print(
+        "CREATE ROSTER POST RECEIVED"
+    )
 
-        employee_id = request.form.get(
-            "employee_id",
-            type=int
+    print(
+        "FORM:",
+        dict(request.form)
+    )
+
+    print(
+        "=========================================="
+    )
+
+    employee_id = request.form.get(
+        "employee_id",
+        type=int
+    )
+
+    raw_week_start = request.form.get(
+        "week_start",
+        ""
+    ).strip()
+
+    # ========================================================
+    # VALIDATION
+    # ========================================================
+
+    if not employee_id:
+
+        flash(
+            "Please select an employee.",
+            "danger"
         )
 
-        raw_week_start = request.form.get(
-            "week_start",
-            ""
-        ).strip()
-
-        employee = (
-            db.session.get(
-                User,
-                employee_id
-            )
-            if employee_id
-            else None
+        return redirect(
+            url_for("create_roster")
         )
 
-        if (
-            not employee
-            or employee.role != "employee"
-            or not employee.active
-            or not raw_week_start
-        ):
+    if not raw_week_start:
 
-            flash(
-                "Employee and week start are required. "
-                "Employee must be active.",
-                "danger"
-            )
+        flash(
+            "Please select a week starting date.",
+            "danger"
+        )
 
-            return redirect(
-                url_for("create_roster")
-            )
+        return redirect(
+            url_for("create_roster")
+        )
 
-        try:
+    employee = db.session.get(
+        User,
+        employee_id
+    )
 
-            week_start = normalize_week_start(
-                raw_week_start
-            )
+    if not employee:
 
-        except ValueError as exc:
+        flash(
+            "Selected employee was not found.",
+            "danger"
+        )
 
-            flash(
-                str(exc),
-                "danger"
-            )
+        return redirect(
+            url_for("create_roster")
+        )
 
-            return redirect(
-                url_for("create_roster")
-            )
+    if employee.role != "employee":
 
-        try:
+        flash(
+            "Selected user is not an employee.",
+            "danger"
+        )
 
-            # ------------------------------------------------
-            # FIND EXISTING ROSTER
-            # ------------------------------------------------
+        return redirect(
+            url_for("create_roster")
+        )
 
-            existing = Roster.query.filter_by(
-                employee_id=employee_id,
-                week_start=week_start
-            ).first()
+    if not employee.active:
 
-            if existing:
+        flash(
+            "Selected employee is inactive.",
+            "danger"
+        )
 
-                roster = existing
+        return redirect(
+            url_for("create_roster")
+        )
 
-            else:
+    # ========================================================
+    # NORMALIZE DATE
+    # ========================================================
 
-                roster = Roster(
-                    employee_id=employee_id,
-                    week_start=week_start
-                )
+    try:
 
-                db.session.add(roster)
+        week_start = normalize_week_start(
+            raw_week_start
+        )
 
-            # ------------------------------------------------
-            # SAVE SHIFTS AND LOCATIONS
-            # ------------------------------------------------
+    except ValueError as exc:
 
-            for day in DAYS:
+        flash(
+            str(exc),
+            "danger"
+        )
 
-                shift = request.form.get(
-                    day,
-                    "OFF"
-                )
+        return redirect(
+            url_for("create_roster")
+        )
 
-                if shift is None:
-                    shift = "OFF"
+    # ========================================================
+    # DATABASE SAVE
+    # ========================================================
 
-                shift = shift.strip()
+    try:
 
-                location = request.form.get(
-                    f"{day}_location",
-                    ""
-                )
+        roster = Roster.query.filter_by(
+            employee_id=employee.id,
+            week_start=week_start
+        ).first()
 
-                if location is None:
-                    location = ""
-
-                location = location.strip()
-
-                setattr(
-                    roster,
-                    day,
-                    shift or "OFF"
-                )
-
-                setattr(
-                    roster,
-                    f"{day}_location",
-                    location
-                )
-
-            # ------------------------------------------------
-            # COMMIT
-            # ------------------------------------------------
-
-            db.session.commit()
+        if roster:
 
             print(
-                f"Roster saved successfully: "
-                f"employee={employee.email}, "
-                f"week={week_start}"
-            )
-
-        except Exception as exc:
-
-            db.session.rollback()
-
-            print(
-                "================================================"
-            )
-            print(
-                "CREATE ROSTER DATABASE ERROR"
-            )
-            print(
-                repr(exc)
-            )
-            print(
-                "================================================"
-            )
-
-            flash(
-                f"Could not save roster: {exc}",
-                "danger"
-            )
-
-            return redirect(
-                url_for("create_roster")
-            )
-
-        # ----------------------------------------------------
-        # PREPARE EMAIL DATA
-        # ----------------------------------------------------
-
-        shifts = {}
-        locations = {}
-
-        for day in DAYS:
-
-            shifts[day] = getattr(
-                roster,
-                day,
-                "OFF"
-            )
-
-            locations[day] = getattr(
-                roster,
-                f"{day}_location",
-                ""
-            )
-
-        # ----------------------------------------------------
-        # SEND EMAIL
-        # ----------------------------------------------------
-
-        try:
-
-            email_sent = send_roster_email(
-                employee_name=employee.name,
-                employee_email=employee.email,
-                week_start=week_start,
-                shifts=shifts,
-                locations=locations
-            )
-
-        except Exception as exc:
-
-            print(
-                f"Email error: {repr(exc)}"
-            )
-
-            email_sent = False
-
-        # ----------------------------------------------------
-        # RESULT
-        # ----------------------------------------------------
-
-        if email_sent:
-
-            flash(
-                f"Roster saved and email sent to "
-                f"{employee.email}.",
-                "success"
+                f"Updating existing roster ID: {roster.id}"
             )
 
         else:
 
-            flash(
-                f"Roster saved, but email could not be sent "
-                f"to {employee.email}.",
-                "warning"
+            print(
+                "Creating new roster..."
             )
 
-        return redirect(
-            url_for("rosters")
+            roster = Roster(
+                employee_id=employee.id,
+                week_start=week_start
+            )
+
+            db.session.add(roster)
+
+        # ----------------------------------------------------
+        # SAVE ALL DAYS
+        # ----------------------------------------------------
+
+        for day in DAYS:
+
+            shift = request.form.get(
+                day,
+                "OFF"
+            )
+
+            location = request.form.get(
+                f"{day}_location",
+                ""
+            )
+
+            if shift is None:
+                shift = "OFF"
+
+            if location is None:
+                location = ""
+
+            shift = str(
+                shift
+            ).strip()
+
+            location = str(
+                location
+            ).strip()
+
+            setattr(
+                roster,
+                day,
+                shift if shift else "OFF"
+            )
+
+            setattr(
+                roster,
+                f"{day}_location",
+                location
+            )
+
+        # ----------------------------------------------------
+        # COMMIT
+        # ----------------------------------------------------
+
+        db.session.commit()
+
+        print(
+            "ROSTER DATABASE SAVE SUCCESSFUL"
         )
 
-    return render_template(
-        "create_roster.html",
-        employees=employees
+        print(
+            f"Employee: {employee.email}"
+        )
+
+        print(
+            f"Week: {week_start}"
+        )
+
+    except Exception as exc:
+
+        db.session.rollback()
+
+        print(
+            "=========================================="
+        )
+
+        print(
+            "CREATE ROSTER DATABASE ERROR"
+        )
+
+        print(
+            repr(exc)
+        )
+
+        print(
+            "=========================================="
+        )
+
+        flash(
+            f"Could not save roster: {exc}",
+            "danger"
+        )
+
+        return redirect(
+            url_for("create_roster")
+        )
+
+    # ========================================================
+    # EMAIL
+    # ========================================================
+
+    shifts = {}
+    locations = {}
+
+    for day in DAYS:
+
+        shifts[day] = getattr(
+            roster,
+            day,
+            "OFF"
+        )
+
+        locations[day] = getattr(
+            roster,
+            f"{day}_location",
+            ""
+        )
+
+    try:
+
+        email_sent = send_roster_email(
+            employee_name=employee.name,
+            employee_email=employee.email,
+            week_start=week_start,
+            shifts=shifts,
+            locations=locations
+        )
+
+    except Exception as exc:
+
+        print(
+            f"Email error: {repr(exc)}"
+        )
+
+        email_sent = False
+
+    # ========================================================
+    # RESULT
+    # ========================================================
+
+    if email_sent:
+
+        flash(
+            f"Roster saved and email sent to "
+            f"{employee.email}.",
+            "success"
+        )
+
+    else:
+
+        flash(
+            f"Roster saved successfully. "
+            f"Email could not be sent to "
+            f"{employee.email}.",
+            "warning"
+        )
+
+    return redirect(
+        url_for("rosters")
     )
 
 
@@ -1428,35 +1637,40 @@ def delete_roster(roster_id):
         roster_id
     )
 
-    if roster:
-
-        try:
-
-            db.session.delete(roster)
-            db.session.commit()
-
-            flash(
-                "Roster deleted.",
-                "success"
-            )
-
-        except Exception as exc:
-
-            db.session.rollback()
-
-            print(
-                f"Delete roster error: {exc}"
-            )
-
-            flash(
-                "Could not delete roster.",
-                "danger"
-            )
-
-    else:
+    if not roster:
 
         flash(
             "Roster not found.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("rosters")
+        )
+
+    try:
+
+        db.session.delete(
+            roster
+        )
+
+        db.session.commit()
+
+        flash(
+            "Roster deleted.",
+            "success"
+        )
+
+    except Exception as exc:
+
+        db.session.rollback()
+
+        print(
+            f"Delete roster error: {repr(exc)}"
+        )
+
+        flash(
+            "Could not delete roster.",
             "danger"
         )
 
@@ -1522,18 +1736,64 @@ def view_roster(roster_id):
 @admin_required
 def upload_csv():
 
-    if request.method == "POST":
+    if request.method == "GET":
 
-        file = request.files.get("file")
+        return render_template(
+            "upload.html"
+        )
 
-        if (
-            not file
-            or not file.filename
-            or not file.filename.lower().endswith(".csv")
-        ):
+    file = request.files.get(
+        "file"
+    )
+
+    if (
+        not file
+        or not file.filename
+        or not file.filename.lower().endswith(".csv")
+    ):
+
+        flash(
+            "Please select a CSV file.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("upload_csv")
+        )
+
+    try:
+
+        text = file.read().decode(
+            "utf-8-sig"
+        )
+
+        reader = csv.DictReader(
+            io.StringIO(text)
+        )
+
+        required = {
+            "name",
+            "email",
+            "week_start"
+        }
+
+        for day in DAYS:
+
+            required.add(day)
+
+            required.add(
+                f"{day}_location"
+            )
+
+        headers = set(
+            reader.fieldnames or []
+        )
+
+        if not required.issubset(headers):
 
             flash(
-                "Please select a CSV file.",
+                "CSV columns are incorrect. "
+                "Download the template first.",
                 "danger"
             )
 
@@ -1541,239 +1801,201 @@ def upload_csv():
                 url_for("upload_csv")
             )
 
-        try:
+        created = 0
+        emails_sent = 0
+        emails_failed = 0
 
-            text = file.read().decode(
-                "utf-8-sig"
-            )
+        for row in reader:
 
-            reader = csv.DictReader(
-                io.StringIO(text)
-            )
-
-            required = {
+            name = row.get(
                 "name",
+                ""
+            ).strip()
+
+            email = row.get(
                 "email",
-                "week_start"
-            }
+                ""
+            ).strip().lower()
 
-            for day in DAYS:
+            raw_week_start = row.get(
+                "week_start",
+                ""
+            ).strip()
 
-                required.add(day)
+            if (
+                not name
+                or not email
+                or not raw_week_start
+            ):
+                continue
 
-                required.add(
-                    f"{day}_location"
+            try:
+
+                week_start = normalize_week_start(
+                    raw_week_start
                 )
 
-            headers = set(
-                reader.fieldnames or []
-            )
+            except ValueError:
 
-            if not required.issubset(headers):
+                continue
 
-                flash(
-                    "CSV columns are incorrect. "
-                    "Download the template first.",
-                    "danger"
+            user = User.query.filter_by(
+                email=email
+            ).first()
+
+            if not user:
+
+                user = User(
+                    name=name,
+                    email=email,
+                    password_hash=generate_password_hash(
+                        "ChangeMe123!"
+                    ),
+                    role="employee",
+                    active=True
                 )
 
-                return redirect(
-                    url_for("upload_csv")
-                )
-
-            created = 0
-            emails_sent = 0
-            emails_failed = 0
-
-            for row in reader:
-
-                name = row.get(
-                    "name",
-                    ""
-                ).strip()
-
-                email = row.get(
-                    "email",
-                    ""
-                ).strip().lower()
-
-                raw_week_start = row.get(
-                    "week_start",
-                    ""
-                ).strip()
-
-                if (
-                    not name
-                    or not email
-                    or not raw_week_start
-                ):
-
-                    continue
-
-                try:
-
-                    week_start = normalize_week_start(
-                        raw_week_start
-                    )
-
-                except ValueError:
-
-                    continue
-
-                user = User.query.filter_by(
-                    email=email
-                ).first()
-
-                if not user:
-
-                    user = User(
-                        name=name,
-                        email=email,
-                        password_hash=generate_password_hash(
-                            "ChangeMe123!"
-                        ),
-                        role="employee",
-                        active=True
-                    )
-
-                    db.session.add(user)
-
-                    db.session.flush()
-
-                elif user.role != "employee":
-
-                    continue
-
-                else:
-
-                    user.name = name
-
-                roster = Roster.query.filter_by(
-                    employee_id=user.id,
-                    week_start=week_start
-                ).first()
-
-                if not roster:
-
-                    roster = Roster(
-                        employee_id=user.id,
-                        week_start=week_start
-                    )
-
-                    db.session.add(roster)
-
-                for day in DAYS:
-
-                    shift = row.get(
-                        day,
-                        "OFF"
-                    )
-
-                    if shift is None:
-                        shift = "OFF"
-
-                    shift = shift.strip()
-
-                    location = row.get(
-                        f"{day}_location",
-                        ""
-                    )
-
-                    if location is None:
-                        location = ""
-
-                    location = location.strip()
-
-                    setattr(
-                        roster,
-                        day,
-                        shift or "OFF"
-                    )
-
-                    setattr(
-                        roster,
-                        f"{day}_location",
-                        location
-                    )
+                db.session.add(user)
 
                 db.session.flush()
 
-                shifts = {}
-                locations = {}
+            elif user.role != "employee":
 
-                for day in DAYS:
+                continue
 
-                    shifts[day] = getattr(
-                        roster,
-                        day,
-                        "OFF"
-                    )
+            else:
 
-                    locations[day] = getattr(
-                        roster,
-                        f"{day}_location",
-                        ""
-                    )
+                user.name = name
 
-                try:
+            roster = Roster.query.filter_by(
+                employee_id=user.id,
+                week_start=week_start
+            ).first()
 
-                    email_sent = send_roster_email(
-                        employee_name=user.name,
-                        employee_email=user.email,
-                        week_start=week_start,
-                        shifts=shifts,
-                        locations=locations
-                    )
+            if not roster:
 
-                except Exception as exc:
+                roster = Roster(
+                    employee_id=user.id,
+                    week_start=week_start
+                )
 
-                    print(
-                        f"Email error for "
-                        f"{user.email}: {repr(exc)}"
-                    )
+                db.session.add(roster)
 
-                    email_sent = False
+            for day in DAYS:
 
-                if email_sent:
-                    emails_sent += 1
-                else:
-                    emails_failed += 1
+                shift = row.get(
+                    day,
+                    "OFF"
+                )
 
-                created += 1
+                location = row.get(
+                    f"{day}_location",
+                    ""
+                )
 
-            db.session.commit()
+                shift = (
+                    str(shift)
+                    .strip()
+                    if shift is not None
+                    else "OFF"
+                )
 
-            flash(
-                f"Imported {created} roster(s). "
-                f"{emails_sent} email(s) sent successfully. "
-                f"{emails_failed} email(s) failed.",
-                "success"
-            )
+                location = (
+                    str(location)
+                    .strip()
+                    if location is not None
+                    else ""
+                )
 
-            return redirect(
-                url_for("rosters")
-            )
+                setattr(
+                    roster,
+                    day,
+                    shift or "OFF"
+                )
 
-        except Exception as exc:
+                setattr(
+                    roster,
+                    f"{day}_location",
+                    location
+                )
 
-            db.session.rollback()
+            db.session.flush()
 
-            print(
-                f"CSV import error: {repr(exc)}"
-            )
+            shifts = {}
+            locations = {}
 
-            flash(
-                f"Could not import CSV: {exc}",
-                "danger"
-            )
+            for day in DAYS:
 
-            return redirect(
-                url_for("upload_csv")
-            )
+                shifts[day] = getattr(
+                    roster,
+                    day,
+                    "OFF"
+                )
 
-    return render_template(
-        "upload.html"
-    )
+                locations[day] = getattr(
+                    roster,
+                    f"{day}_location",
+                    ""
+                )
+
+            try:
+
+                email_sent = send_roster_email(
+                    employee_name=user.name,
+                    employee_email=user.email,
+                    week_start=week_start,
+                    shifts=shifts,
+                    locations=locations
+                )
+
+            except Exception as exc:
+
+                print(
+                    f"Email error for "
+                    f"{user.email}: {repr(exc)}"
+                )
+
+                email_sent = False
+
+            if email_sent:
+
+                emails_sent += 1
+
+            else:
+
+                emails_failed += 1
+
+            created += 1
+
+        db.session.commit()
+
+        flash(
+            f"Imported {created} roster(s). "
+            f"{emails_sent} email(s) sent successfully. "
+            f"{emails_failed} email(s) failed.",
+            "success"
+        )
+
+        return redirect(
+            url_for("rosters")
+        )
+
+    except Exception as exc:
+
+        db.session.rollback()
+
+        print(
+            f"CSV import error: {repr(exc)}"
+        )
+
+        flash(
+            f"Could not import CSV: {exc}",
+            "danger"
+        )
+
+        return redirect(
+            url_for("upload_csv")
+        )
 
 
 # ============================================================
@@ -1804,7 +2026,9 @@ def template_csv():
             f"{day}_location"
         )
 
-    writer.writerow(headers)
+    writer.writerow(
+        headers
+    )
 
     writer.writerow([
         "John Doe",
@@ -1855,6 +2079,10 @@ def initialize_database():
 
             db.create_all()
 
+            print(
+                "Database tables created/verified."
+            )
+
             migrate_database()
 
             seed_admin()
@@ -1862,22 +2090,25 @@ def initialize_database():
             clean_roster_dates()
 
             print(
-                "Database initialized successfully."
+                "Database initialization completed."
             )
 
     except Exception as exc:
 
         print(
-            "================================================"
+            "=========================================="
         )
+
         print(
             "DATABASE INITIALIZATION ERROR"
         )
+
         print(
             repr(exc)
         )
+
         print(
-            "================================================"
+            "=========================================="
         )
 
 
@@ -1902,4 +2133,3 @@ if __name__ == "__main__":
         port=port,
         debug=False
     )
-
